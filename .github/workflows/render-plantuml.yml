@@ -1,0 +1,103 @@
+name: Render PlantUML Diagrams
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - '*.puml'
+      - '.github/workflows/render-plantuml.yml'
+  pull_request:
+    paths:
+      - '*.puml'
+      - '.github/workflows/render-plantuml.yml'
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  render-plantuml:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Download PlantUML
+        run: |
+          mkdir -p plantuml
+          wget -q https://github.com/plantuml/plantuml/releases/download/v1.2024.3/plantuml-1.2024.3.jar -O plantuml/plantuml.jar
+          echo "PlantUML downloaded successfully"
+
+      - name: Find and render PlantUML files
+        run: |
+          echo "Finding PlantUML files..."
+          find . -name "*.puml" -not -path "./.git/*" -not -path "./venv/*" -not -path "./.github/*" | while read puml_file; do
+            echo "Processing: $puml_file"
+            png_file="${puml_file%.puml}.png"
+            dir_name=$(dirname "$puml_file")
+            
+            # 渲染为 PNG
+            java -jar plantuml/plantuml.jar -tpng "$puml_file" -o "$dir_name" || {
+              echo "Warning: Failed to render $puml_file"
+              continue
+            }
+            
+            # 检查文件是否生成
+            if [ -f "$png_file" ]; then
+              echo "✅ Successfully rendered: $png_file"
+              ls -lh "$png_file"
+            else
+              echo "❌ Failed to render: $puml_file"
+            fi
+          done
+
+      - name: List rendered PNG files
+        run: |
+          echo "=== Rendered PNG files ==="
+          find . -name "*.png" -not -path "./.git/*" -not -path "./venv/*" -not -path "./.github/*" || echo "No PNG files found"
+
+      - name: Commit and push rendered images
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main')
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          
+          # 检查是否有 PNG 文件需要提交
+          if git diff --quiet --exit-code -- '*.png' && [ -z "$(git ls-files --others --exclude-standard -- '*.png')" ]; then
+            echo "No PNG files to commit"
+          else
+            echo "Staging PNG files..."
+            git add *.png
+            git status
+            
+            # 提交更改
+            git commit -m "Auto-render PlantUML diagrams [skip ci]" || {
+              echo "No changes to commit or commit failed"
+              exit 0
+            }
+            
+            # 推送更改
+            git push || {
+              echo "Push failed, but this is OK"
+              exit 0
+            }
+            echo "✅ Successfully committed and pushed rendered images"
+          fi
+
+      - name: Upload rendered images as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: plantuml-diagrams
+          path: |
+            **/*.png
+          retention-days: 30
+          if-no-files-found: ignore
