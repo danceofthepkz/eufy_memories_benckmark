@@ -1,0 +1,40 @@
+# Google Cloud / Gemini API
+google-cloud-aiplatform>=1.38.0
+google-generativeai>=0.3.0
+python-dotenv>=1.0.0
+
+# 计算机视觉和图像处理
+opencv-python>=4.8.0
+numpy>=1.21.0
+Pillow>=9.0.0
+
+# 目标检测 (YOLOv8)
+ultralytics>=8.0.0
+
+# 人脸识别 (ArcFace - 推荐，更准确)
+insightface>=0.7.3
+onnxruntime>=1.15.0  # insightface 依赖
+
+# 行人重识别 (ReID)
+torch>=2.0.0  # torchreid 依赖
+torchvision>=0.15.0  # torchreid 依赖
+torchreid>=1.4.0  # ReID 模型库（OSNet等）
+gdown>=5.0.0  # torchreid 依赖（用于下载模型）
+tensorboard>=2.0.0  # torchreid 依赖
+
+# 或者使用 face_recognition (备选方案，更简单但可能精度稍低)
+# face-recognition>=1.3.0
+# dlib>=19.24.0  # face_recognition 依赖
+
+# 机器学习和相似度计算
+scikit-learn>=1.0.0
+
+# 数据库 (PostgreSQL + pgvector)
+psycopg2-binary>=2.9.0  # PostgreSQL 驱动
+# 注意: pgvector 是 PostgreSQL 的扩展，需要在数据库层面安装
+# 安装方法: CREATE EXTENSION vector; (在 PostgreSQL 中执行)
+
+# 其他工具
+tqdm>=4.64.0  # 进度条
+tenacity>=8.0.0  # 重试机制（用于 API 调用）
+

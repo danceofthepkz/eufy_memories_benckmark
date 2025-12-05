@@ -1,0 +1,160 @@
+@startuml 系统数据流向图
+
+title 家庭智能安防系统 - 数据流向图\n(从视频输入到用户检索的完整数据流)
+
+skinparam activity {
+    BackgroundColor<<Phase0>> #E8F4F8
+    BackgroundColor<<Phase1>> #FFF4E6
+    BackgroundColor<<Phase2>> #E8F5E9
+    BackgroundColor<<Phase3>> #F3E5F5
+    BackgroundColor<<Phase4>> #E0F2F1
+    BackgroundColor<<Phase5>> #FFF9C4
+    BackgroundColor<<Phase6>> #FCE4EC
+    BackgroundColor<<Data>> #F5F5F5
+}
+
+start
+
+' ==========================================
+' Phase 0: 系统初始化
+' ==========================================
+partition "Phase 0: 系统初始化" <<Phase0>> {
+    :读取底库图片\n(lib文件夹);
+    :使用ArcFace提取\n人脸特征(512维);
+    :注册到数据库\n(persons + person_faces表);
+    note right: 建立"认知基准"\n系统现在认识了"家人"的长相
+}
+
+' ==========================================
+' Phase 1: 视觉扫描
+' ==========================================
+partition "Phase 1: 视觉扫描与特征提取" <<Phase1>> {
+    :读取视频文件\n+ JSON元数据;
+    :视频流采样\n(每秒1帧);
+    :YOLO多目标检测\n(检测所有人物);
+    :双模态特征提取;
+    partition "特征提取" {
+        :人脸特征\n(ArcFace 512维);
+        :身体特征\n(ReID 2048维);
+    }
+    :身份仲裁;
+    partition "身份判断" {
+        if (有正脸?) then (是)
+            :匹配底库\n(person_faces表);
+            :判定为家人;
+            :更新current_body_embedding;
+        else (否)
+            if (匹配身体缓存?) then (是)
+                :判定为家人;
+            else (否)
+                :判定为陌生人;
+            endif
+        endif
+    }
+    :创建Clip_Obj;
+    note right: Clip_Obj包含:\n- 时间戳\n- 摄像头位置\n- 检测到的人物列表\n- 特征向量
+}
+
+' ==========================================
+' Phase 2: 事件合并
+' ==========================================
+partition "Phase 2: 时空事件合并" <<Phase2>> {
+    :时间流排序\n(按timestamp);
+    :融合策略判断;
+    partition "合并条件" {
+        if (时间间隔 < 60秒\n且有共同人物?) then (是)
+            :合并到同一事件;
+        else (否)
+            :创建新事件;
+        endif
+    }
+    :事件聚合打包;
+    :身份一致性检查;
+    :构建Prompt上下文;
+    note right: Global_Event包含:\n- 开始/结束时间\n- 涉及的摄像头\n- 出现的人物集合\n- 关联的Clips\n- Prompt文本
+}
+
+' ==========================================
+' Phase 3: LLM语义生成
+' ==========================================
+partition "Phase 3: LLM语义生成" <<Phase3>> {
+    :构建Prompt\n(系统提示+用户提示);
+    :调用Gemini API;
+    :接收自然语言日志;
+    :验证和清洗响应;
+    :角色分类推断\n(根据行为);
+    note right: 生成summary_text:\n例如:"09:00，家人(Dad)驾车\n回到庭院，随后步行经由\n正门进入室内。"
+}
+
+' ==========================================
+' Phase 4: 结构化落库
+' ==========================================
+partition "Phase 4: 结构化落库" <<Phase4>> {
+    :开启数据库事务;
+    :质量评估优选\n(选择最佳检测);
+    :向量格式转换\n(2048维→pgvector);
+    :插入event_logs表\n(事件主表);
+    :插入event_appearances表\n(人物出场快照);
+    :提交事务;
+    note right: 数据库表结构:\n- event_logs: 事件描述\n- event_appearances: 人物特征\n- persons: 人物信息\n- person_faces: 人脸底库
+}
+
+' ==========================================
+' Phase 5: 记忆压缩(可选)
+' ==========================================
+partition "Phase 5: 记忆压缩" <<Phase5>> {
+    :查询指定日期的事件\n(event_logs表);
+    :格式化时间线文本;
+    :调用Gemini API\n生成每日总结;
+    :保存到daily_summaries表;
+    note right: 每日总结示例:\n"9月1日，家人于09:00出门，\n18:00回家。期间14:00有\n一名快递员来访，无异常\n入侵记录。"
+}
+
+' ==========================================
+' Phase 6: 用户检索(实时)
+' ==========================================
+partition "Phase 6: 用户检索" <<Phase6>> {
+    :接收用户问题\n(自然语言);
+    :解析查询意图;
+    partition "查询解析" {
+        :提取日期;
+        :提取人物;
+        :提取意图;
+    }
+    :混合检索数据库;
+    partition "检索策略" {
+        if (查询规律?) then (是)
+            :查询daily_summaries表;
+        else (否)
+            :查询event_logs + event_appearances表;
+            :向量相似度搜索(可选);
+        endif
+    }
+    :实物化证据\n(提取图片);
+    :调用Gemini API\n合成回答;
+    :返回答案+图片证据;
+    note right: 回答示例:\n"9月1日18:00爸爸回家时，\n身穿红色T恤和黑色长裤。\n[展示当时的抓拍图]"
+}
+
+stop
+
+' ==========================================
+' 数据流标注
+' ==========================================
+note top of start
+  **输入数据源:**
+  - 视频文件 (665个视频)
+  - JSON元数据 (时间、摄像头位置)
+  - 底库图片 (家人照片)
+end note
+
+note bottom of stop
+  **输出结果:**
+  - 结构化事件日志
+  - 人物出场记录
+  - 每日总结
+  - 用户查询回答
+end note
+
+@enduml
+

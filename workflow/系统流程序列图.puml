@@ -1,0 +1,197 @@
+@startuml 系统流程序列图
+
+title 家庭智能安防系统 - 完整流程序列图\n(Phase 0 到 Phase 6 的执行流程)
+
+actor 用户
+participant "Phase 0\n系统初始化" as P0
+participant "Phase 1\n视觉扫描" as P1
+participant "Phase 2\n事件合并" as P2
+participant "Phase 3\nLLM语义生成" as P3
+participant "Phase 4\n结构化落库" as P4
+participant "Phase 5\n记忆压缩" as P5
+participant "Phase 6\n用户检索" as P6
+database "PostgreSQL\n数据库" as DB
+cloud "Gemini API" as LLM
+cloud "视频文件" as Videos
+cloud "底库图片" as Lib
+
+' ==========================================
+' Phase 0: 系统初始化
+' ==========================================
+== Phase 0: 系统初始化 ==
+activate P0
+P0 -> Lib: 扫描lib文件夹
+Lib --> P0: 返回图片列表
+P0 -> P0: 使用ArcFace提取人脸特征(512维)
+P0 -> DB: 插入persons表(role='owner')
+P0 -> DB: 插入person_faces表(embedding)
+DB --> P0: 注册成功
+deactivate P0
+note right of P0: 系统现在认识了"家人"的长相
+
+' ==========================================
+' Phase 1: 视觉扫描与特征提取
+' ==========================================
+== Phase 1: 视觉扫描与特征提取 ==
+activate P1
+loop 遍历所有视频
+    P1 -> Videos: 读取视频文件
+    Videos --> P1: 返回视频流
+    
+    P1 -> P1: 数据加载与对齐(解析JSON元数据)
+    P1 -> P1: 视频流采样(每秒1帧)
+    
+    loop 处理每一帧
+        P1 -> P1: YOLO多目标检测
+        P1 -> P1: 提取人物裁剪框
+        
+        loop 处理每个人物
+            P1 -> P1: 双模态特征提取
+            note right: 人脸: ArcFace 512维\n身体: ReID 2048维
+            
+            P1 -> DB: 查询person_faces表(匹配人脸)
+            DB --> P1: 返回匹配结果
+            
+            alt 匹配到人脸
+                P1 -> DB: 更新persons表current_body_embedding
+                P1 -> P1: 判定为家人
+            else 无脸但匹配到身体缓存
+                P1 -> DB: 查询persons表(24小时内owner)
+                DB --> P1: 返回匹配结果
+                P1 -> P1: 判定为家人
+            else 无匹配
+                P1 -> P1: 判定为陌生人
+            end
+        end
+        
+        P1 -> P1: 跟踪优化(可选，跳过重复检测)
+    end
+    
+    P1 -> P1: 创建Clip_Obj
+    note right: Clip_Obj包含:\n- time: 时间戳\n- cam: 摄像头位置\n- people_detected: 检测到的人物列表
+end
+
+P1 --> P2: 返回Clip_Obj[]列表
+deactivate P1
+
+' ==========================================
+' Phase 2: 时空事件合并
+' ==========================================
+== Phase 2: 时空事件合并 ==
+activate P2
+P2 -> P2: 时间流排序(按timestamp升序)
+
+loop 遍历所有Clip
+    P2 -> P2: 融合策略判断
+    note right: 判断条件:\n1. 时间间隔 < 60秒\n2. 有共同人物
+    
+    alt 可以合并
+        P2 -> P2: 加入当前事件缓冲区
+    else 不能合并
+        P2 -> P2: 封存当前事件
+        P2 -> P2: 创建新事件缓冲区
+    end
+end
+
+P2 -> P2: 事件聚合打包
+note right: 生成Global_Event:\n- start_time/end_time\n- cameras列表\n- people集合\n- clips列表\n- keyframes
+
+P2 -> P2: 身份一致性检查
+P2 -> P2: 构建Prompt上下文
+
+P2 --> P3: 返回Global_Event[]列表
+deactivate P2
+
+' ==========================================
+' Phase 3: LLM语义生成
+' ==========================================
+== Phase 3: LLM语义生成 ==
+activate P3
+loop 遍历所有Global_Event
+    P3 -> P3: 构建Prompt(系统提示+用户提示)
+    note right: Prompt包含:\n- 时间线文本\n- 摄像头位置\n- 人物信息
+    
+    P3 -> LLM: 调用Gemini API
+    LLM --> P3: 返回自然语言日志
+    
+    P3 -> P3: 验证和清洗响应
+    P3 -> P3: 角色分类推断(根据行为)
+    P3 -> P3: 添加summary_text到事件
+end
+
+P3 --> P4: 返回带summary的Global_Event[]列表
+deactivate P3
+
+' ==========================================
+' Phase 4: 结构化落库
+' ==========================================
+== Phase 4: 结构化落库 ==
+activate P4
+loop 遍历所有Global_Event
+    P4 -> DB: 开启事务
+    
+    P4 -> P4: 按人物分组检测记录
+    P4 -> P4: 质量评估优选(选择最佳检测)
+    
+    P4 -> DB: 插入event_logs表
+    DB --> P4: 返回event_id(UUID)
+    
+    loop 遍历每个人物
+        alt 是陌生人
+            P4 -> DB: 创建persons记录(role='unknown')
+            DB --> P4: 返回person_id
+        end
+        
+        P4 -> P4: 向量格式转换(2048维→pgvector)
+        P4 -> DB: 插入event_appearances表
+    end
+    
+    P4 -> DB: 提交事务
+    DB --> P4: 写入成功
+end
+
+deactivate P4
+note right of P4: 数据已持久化到数据库
+
+' ==========================================
+' Phase 5: 记忆压缩(可选，定时执行)
+' ==========================================
+== Phase 5: 记忆压缩 ==
+activate P5
+P5 -> DB: 查询指定日期的事件
+DB --> P5: 返回事件列表
+
+P5 -> P5: 格式化时间线文本
+
+P5 -> LLM: 调用Gemini API生成总结
+LLM --> P5: 返回每日总结文本
+
+P5 -> DB: 插入/更新daily_summaries表
+DB --> P5: 保存成功
+deactivate P5
+
+' ==========================================
+' Phase 6: 用户检索(实时查询)
+' ==========================================
+== Phase 6: 用户检索 ==
+activate 用户
+用户 -> P6: 提问("9月1日爸爸回家穿什么衣服?")
+activate P6
+
+P6 -> P6: 解析自然语言查询
+note right: 提取:\n- 日期: 9月1日\n- 人物: 爸爸\n- 意图: 查询衣着
+
+P6 -> DB: 混合检索
+note right: SQL查询:\n- JOIN event_logs和event_appearances\n- WHERE条件过滤\n- 向量相似度搜索(可选)
+DB --> P6: 返回相关记录
+
+P6 -> P6: 实物化证据(提取图片)
+P6 -> LLM: 调用Gemini API合成回答
+LLM --> P6: 返回最终回答
+
+P6 --> 用户: 返回答案+图片证据
+deactivate P6
+deactivate 用户
+
+@enduml
+

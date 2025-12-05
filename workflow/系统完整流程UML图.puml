@@ -1,0 +1,411 @@
+@startuml 系统完整流程UML图
+
+!define RECTANGLE class
+
+title 家庭智能安防系统 - 完整流程UML图\n(Phase 0 到 Phase 6)
+
+skinparam class {
+    BackgroundColor<<Phase0>> #E8F4F8
+    BackgroundColor<<Phase1>> #FFF4E6
+    BackgroundColor<<Phase2>> #E8F5E9
+    BackgroundColor<<Phase3>> #F3E5F5
+    BackgroundColor<<Phase4>> #E0F2F1
+    BackgroundColor<<Phase5>> #FFF9C4
+    BackgroundColor<<Phase6>> #FCE4EC
+    BackgroundColor<<Data>> #F5F5F5
+    BackgroundColor<<Module>> #FFFFFF
+}
+
+' ==========================================
+' Phase 0: 系统初始化
+' ==========================================
+package "Phase 0: 系统初始化" <<Phase0>> {
+    class Phase0Initialization <<Phase0>> {
+        +run(lib_path: str): bool
+    }
+    
+    class LibraryLoader <<Module>> {
+        +load_library(lib_path: str): Dict[str, np.ndarray]
+        -_extract_face_feature(img): Optional[np.ndarray]
+    }
+    
+    class RegistryManager <<Module>> {
+        +register_family(lib_dict, lib_path): void
+    }
+    
+    Phase0Initialization *-- LibraryLoader
+    Phase0Initialization *-- RegistryManager
+}
+
+' ==========================================
+' Phase 1: 视觉扫描与特征提取
+' ==========================================
+package "Phase 1: 视觉扫描与特征提取" <<Phase1>> {
+    class CV_Pipeline <<Phase1>> {
+        +process_one_clip(json_record): Optional[Dict]
+        +process_all_clips(max_clips): List[Dict]
+    }
+    
+    class DataLoader <<Module>> {
+        +parse(json_record): Tuple
+        +get_all_records(): List[Dict]
+    }
+    
+    class FrameSampler <<Module>> {
+        +get_frames(video_path, fps): Tuple[List, float]
+    }
+    
+    class YoloDetector <<Module>> {
+        +detect_persons(frame): List[PersonCrop]
+    }
+    
+    class FeatureEncoder <<Module>> {
+        +extract(crop): Dict[str, np.ndarray]
+    }
+    
+    class IdentityArbiter <<Module>> {
+        +identify(vectors, timestamp): Dict
+        -_match_face(face_vec): Optional[int]
+        -_match_body(body_vec, timestamp): Optional[int]
+    }
+    
+    class ResultBuffer <<Module>> {
+        +create_clip_obj(timestamp, camera, results): Dict
+    }
+    
+    class SimpleTracker <<Module>> {
+        +match(bbox, frame_idx): Optional[int]
+        +update_track(track_id, bbox, identity): void
+    }
+    
+    CV_Pipeline *-- DataLoader
+    CV_Pipeline *-- FrameSampler
+    CV_Pipeline *-- YoloDetector
+    CV_Pipeline *-- FeatureEncoder
+    CV_Pipeline *-- IdentityArbiter
+    CV_Pipeline *-- ResultBuffer
+    CV_Pipeline *-- SimpleTracker
+}
+
+' ==========================================
+' Phase 2: 时空事件合并
+' ==========================================
+package "Phase 2: 时空事件合并" <<Phase2>> {
+    class Event_Fusion_Pipeline <<Phase2>> {
+        +run(raw_clips): List[Dict]
+    }
+    
+    class StreamSorter <<Module>> {
+        +sort_and_validate(clips): List[Dict]
+    }
+    
+    class FusionPolicy <<Module>> {
+        +is_connected(last_clip, current_clip): bool
+    }
+    
+    class SessionManager <<Module>> {
+        +process_clip(clip): List[List[Dict]]
+        +finalize(): List[Dict]
+    }
+    
+    class EventAggregator <<Module>> {
+        +pack(event_clips): Dict
+    }
+    
+    class IdentityRefiner <<Module>> {
+        +refine_event_identities(event): Dict
+    }
+    
+    class ContextBuilder <<Module>> {
+        +build(global_event): str
+    }
+    
+    Event_Fusion_Pipeline *-- StreamSorter
+    Event_Fusion_Pipeline *-- FusionPolicy
+    Event_Fusion_Pipeline *-- SessionManager
+    Event_Fusion_Pipeline *-- EventAggregator
+    Event_Fusion_Pipeline *-- IdentityRefiner
+    Event_Fusion_Pipeline *-- ContextBuilder
+    SessionManager *-- FusionPolicy
+}
+
+' ==========================================
+' Phase 3: 宏观语义生成
+' ==========================================
+package "Phase 3: 宏观语义生成" <<Phase3>> {
+    class LLM_Reasoning_Pipeline <<Phase3>> {
+        +process_events(global_events): List[Dict]
+        +process_one_event(event): Dict
+    }
+    
+    class PromptEngine <<Module>> {
+        +build_full_prompt(event): Dict[str, str]
+    }
+    
+    class LLMGateway <<Module>> {
+        +generate(system_prompt, user_prompt): str
+    }
+    
+    class ResponseValidator <<Module>> {
+        +validate_and_clean(response, event): Dict
+        -_generate_fallback(event): Dict
+    }
+    
+    class RoleClassifier <<Module>> {
+        +extract_person_behaviors(summary, people_info): Dict
+        +update_people_roles(event, behaviors): Dict
+    }
+    
+    LLM_Reasoning_Pipeline *-- PromptEngine
+    LLM_Reasoning_Pipeline *-- LLMGateway
+    LLM_Reasoning_Pipeline *-- ResponseValidator
+    LLM_Reasoning_Pipeline *-- RoleClassifier
+}
+
+' ==========================================
+' Phase 4: 结构化落库
+' ==========================================
+package "Phase 4: 结构化落库" <<Phase4>> {
+    class Persistence_Pipeline <<Phase4>> {
+        +save_event(global_event): Optional[UUID]
+        +save_events(global_events): List[UUID]
+    }
+    
+    class QualitySelector <<Module>> {
+        +group_by_person(event): Dict
+        +select_best(detection_list): Dict
+    }
+    
+    class VectorAdapter <<Module>> {
+        +to_pgvector_body(embedding): str
+    }
+    
+    class TransactionManager <<Module>> {
+        +begin(): ContextManager
+    }
+    
+    class EventDAO <<Module>> {
+        +insert_event(cursor, event, summary): UUID
+    }
+    
+    class AppearanceDAO <<Module>> {
+        +batch_insert_appearances(cursor, appearances): void
+    }
+    
+    Persistence_Pipeline *-- QualitySelector
+    Persistence_Pipeline *-- VectorAdapter
+    Persistence_Pipeline *-- TransactionManager
+    Persistence_Pipeline *-- EventDAO
+    Persistence_Pipeline *-- AppearanceDAO
+    EventDAO *-- TransactionManager
+    AppearanceDAO *-- TransactionManager
+}
+
+' ==========================================
+' Phase 5: 记忆压缩
+' ==========================================
+package "Phase 5: 记忆压缩" <<Phase5>> {
+    class Daily_Summary_Pipeline <<Phase5>> {
+        +run_for_date(target_date, force_update): Optional[int]
+        +run_batch(date_list, force_update): Dict[str, int]
+    }
+    
+    class QueryEngine <<Module>> {
+        +fetch_events(target_date): List[Dict]
+        +get_distinct_dates(): List[str]
+    }
+    
+    class NarrativeAggregator <<Module>> {
+        +format_timeline(events): str
+        +check_token_limit(text): bool
+    }
+    
+    class InsightEngine <<Module>> {
+        +analyze(timeline_text, target_date): str
+    }
+    
+    class ArchivePersister <<Module>> {
+        +save(summary_date, summary_text, total_events): int
+        +get_summary(target_date): Optional[Dict]
+    }
+    
+    Daily_Summary_Pipeline *-- QueryEngine
+    Daily_Summary_Pipeline *-- NarrativeAggregator
+    Daily_Summary_Pipeline *-- InsightEngine
+    Daily_Summary_Pipeline *-- ArchivePersister
+}
+
+' ==========================================
+' Phase 6: 用户检索
+' ==========================================
+package "Phase 6: 用户检索" <<Phase6>> {
+    class User_Retrieval_Pipeline <<Phase6>> {
+        +answer(user_query): Dict[str, Any]
+    }
+    
+    class QueryParser <<Module>> {
+        +parse(user_query): Dict
+    }
+    
+    class RetrievalEngine <<Module>> {
+        +retrieve(query_obj): List[Dict]
+    }
+    
+    class EvidenceMaterializer <<Module>> {
+        +materialize(retrieved_records): List[Dict]
+    }
+    
+    class RAGSynthesisEngine <<Module>> {
+        +synthesize(user_query, retrieved_evidence, query_obj): Dict
+    }
+    
+    User_Retrieval_Pipeline *-- QueryParser
+    User_Retrieval_Pipeline *-- RetrievalEngine
+    User_Retrieval_Pipeline *-- EvidenceMaterializer
+    User_Retrieval_Pipeline *-- RAGSynthesisEngine
+}
+
+' ==========================================
+' 数据库层
+' ==========================================
+package "数据库层" <<Data>> {
+    database "PostgreSQL + pgvector" as DB {
+        entity "persons" {
+            +id: SERIAL
+            +name: VARCHAR
+            +role: VARCHAR
+            +current_body_embedding: vector(2048)
+            +body_update_time: TIMESTAMP
+        }
+        entity "person_faces" {
+            +id: SERIAL
+            +person_id: INTEGER
+            +embedding: vector(512)
+            +source_image: VARCHAR
+        }
+        entity "event_logs" {
+            +id: UUID
+            +video_filename: VARCHAR
+            +start_time: TIMESTAMP
+            +camera_location: VARCHAR
+            +llm_description: TEXT
+        }
+        entity "event_appearances" {
+            +id: SERIAL
+            +event_id: UUID
+            +person_id: INTEGER
+            +match_method: VARCHAR
+            +body_embedding: vector(2048)
+        }
+        entity "daily_summaries" {
+            +id: SERIAL
+            +summary_date: DATE
+            +summary_text: TEXT
+            +total_events: INTEGER
+        }
+    }
+}
+
+' ==========================================
+' 外部服务
+' ==========================================
+cloud "Google Gemini API" as GeminiAPI
+cloud "视频文件" as VideoFiles
+cloud "底库图片" as LibraryImages
+
+' ==========================================
+' 数据流关系
+' ==========================================
+LibraryImages --> Phase0Initialization
+Phase0Initialization --> DB : "写入底库"
+
+VideoFiles --> CV_Pipeline
+CV_Pipeline --> Event_Fusion_Pipeline : "Clip_Obj[]"
+Event_Fusion_Pipeline --> LLM_Reasoning_Pipeline : "Global_Event[]"
+LLM_Reasoning_Pipeline --> GeminiAPI : "调用LLM"
+GeminiAPI --> LLM_Reasoning_Pipeline : "返回summary_text"
+LLM_Reasoning_Pipeline --> Persistence_Pipeline : "带summary的Global_Event[]"
+Persistence_Pipeline --> DB : "写入事件和出场记录"
+
+DB --> Daily_Summary_Pipeline : "查询事件"
+Daily_Summary_Pipeline --> GeminiAPI : "调用LLM生成总结"
+GeminiAPI --> Daily_Summary_Pipeline : "返回总结"
+Daily_Summary_Pipeline --> DB : "写入每日总结"
+
+DB --> User_Retrieval_Pipeline : "检索数据"
+User_Retrieval_Pipeline --> GeminiAPI : "调用LLM生成回答"
+GeminiAPI --> User_Retrieval_Pipeline : "返回回答"
+
+' ==========================================
+' 流程顺序标注
+' ==========================================
+note right of Phase0Initialization
+  **Phase 0: 系统初始化**
+  1. 读取底库图片
+  2. 提取人脸特征(512维)
+  3. 注册到数据库
+end note
+
+note right of CV_Pipeline
+  **Phase 1: 视觉扫描**
+  1. 数据加载与对齐
+  2. 视频流采样(每秒1帧)
+  3. YOLO多目标检测
+  4. 双模态特征提取
+     - 人脸(ArcFace 512维)
+     - 身体(ReID 2048维)
+  5. 身份仲裁
+     - 有脸→匹配底库
+     - 无脸→匹配缓存
+  6. 结果暂存(Clip_Obj)
+end note
+
+note right of Event_Fusion_Pipeline
+  **Phase 2: 事件合并**
+  1. 时间流排序
+  2. 融合策略判断
+     - 时间间隔<60秒
+     - 有共同人物
+  3. 滑动窗口分组
+  4. 事件聚合打包
+  5. 身份一致性检查
+  6. 构建Prompt上下文
+end note
+
+note right of LLM_Reasoning_Pipeline
+  **Phase 3: LLM语义生成**
+  1. 构建Prompt
+  2. 调用Gemini API
+  3. 验证和清洗响应
+  4. 角色分类推断
+  5. 生成自然语言日志
+end note
+
+note right of Persistence_Pipeline
+  **Phase 4: 结构化落库**
+  1. 质量评估优选
+  2. 向量格式转换
+  3. 开启事务
+  4. 插入事件主表
+  5. 插入出场快照表
+  6. 提交事务
+end note
+
+note right of Daily_Summary_Pipeline
+  **Phase 5: 记忆压缩**
+  1. 查询指定日期事件
+  2. 格式化时间线
+  3. LLM生成总结
+  4. 幂等写入数据库
+end note
+
+note right of User_Retrieval_Pipeline
+  **Phase 6: 用户检索**
+  1. 解析自然语言查询
+  2. 混合检索数据库
+  3. 实物化证据(图片)
+  4. RAG合成回答
+end note
+
+@enduml
+

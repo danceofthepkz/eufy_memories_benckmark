@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Google Cloud Service Account (敏感文件)
+*.json
+!long_mem_dataset.json
+gen-lang-sa.json
+*-sa.json
+
+# 环境变量文件
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志和临时文件
+*.log
+*.tmp
+temp/
+
+# 项目特定文件夹（不上传）
+重要的模块/
+memories_ai_benchmark/
+
+
+
+
+
+
+
+
