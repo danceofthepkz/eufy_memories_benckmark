@@ -31,6 +31,12 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Install Chinese fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-wqy-zenhei fonts-wqy-microhei fonts-noto-cjk
+          echo "Chinese fonts installed successfully"
+
       - name: Download PlantUML
         run: |
           mkdir -p plantuml
@@ -45,8 +51,14 @@ jobs:
             png_file="${puml_file%.puml}.png"
             dir_name=$(dirname "$puml_file")
             
-            # 渲染为 PNG
-            java -jar plantuml/plantuml.jar -tpng "$puml_file" -o "$dir_name" || {
+            # 渲染为 PNG (支持中文)
+            java -Djava.awt.headless=true \
+              -Dfile.encoding=UTF-8 \
+              -jar plantuml/plantuml.jar \
+              -tpng \
+              -charset UTF-8 \
+              "$puml_file" \
+              -o "$dir_name" || {
               echo "Warning: Failed to render $puml_file"
               continue
             }

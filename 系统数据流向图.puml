@@ -1,5 +1,10 @@
 @startuml 系统数据流向图
 
+' 中文字体配置
+skinparam defaultFontName "WenQuanYi Zen Hei"
+skinparam defaultFontSize 12
+skinparam defaultFontColor #000000
+
 title 家庭智能安防系统 - 数据流向图\n(从视频输入到用户检索的完整数据流)
 
 skinparam activity {

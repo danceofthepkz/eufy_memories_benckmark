@@ -2,6 +2,11 @@
 
 !define RECTANGLE class
 
+' 中文字体配置
+skinparam defaultFontName "WenQuanYi Zen Hei"
+skinparam defaultFontSize 12
+skinparam defaultFontColor #000000
+
 title 家庭智能安防系统 - 完整流程UML图\n(Phase 0 到 Phase 6)
 
 skinparam class {
