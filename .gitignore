@@ -35,6 +35,14 @@ Thumbs.db
 *.tmp
 temp/
 
+# 模型文件（太大，不上传）
+*.pt
+*.pth
+*.onnx
+*.h5
+*.pb
+*.tflite
+
 # 项目特定文件夹（不上传）
 重要的模块/
 memories_ai_benchmark/
